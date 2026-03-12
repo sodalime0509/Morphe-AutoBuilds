@@ -12,6 +12,13 @@ def get_download_link(version: str, app_name: str, config: dict, arch: str = Non
     criteria = [config['type'], target_arch, config['dpi']]
     
     # --- UNIVERSAL URL FINDER WITH VALIDATION ---
+    # Extract build number if present (e.g., "32.30.0(1575420)" -> version="32.30.0", build="1575420")
+    build_number = None
+    build_match = re.search(r'\((\d+)\)$', version)
+    if build_match:
+        build_number = build_match.group(1)
+        version = version[:build_match.start()]
+    
     version_parts = version.split('.')
     found_soup = None
     correct_version_page = False
@@ -22,6 +29,13 @@ def get_download_link(version: str, app_name: str, config: dict, arch: str = Non
     # Loop backwards: Try full version, then strip parts
     for i in range(len(version_parts), 0, -1):
         current_ver_str = "-".join(version_parts[:i])
+        
+        # If build number exists, append it to the last version part in URL
+        if build_number and i == len(version_parts):
+            # e.g., "32-30-0" + "1575420" -> "32-30-01575420"
+            parts = version_parts[:i]
+            parts[-1] = parts[-1] + build_number
+            current_ver_str = "-".join(parts)
         
         # Generate ALL possible URL patterns in priority order
         url_patterns = []
@@ -271,6 +285,14 @@ def get_latest_version(app_name: str, config: dict) -> str:
                     else:
                         break
                 if base_version_parts:
-                    return '.'.join(base_version_parts)
+                    base_version = '.'.join(base_version_parts)
+                    
+                    # Check for build number in parentheses like "32.30.0(1575420)"
+                    build_match = re.search(r'\((\d+)\)', version_text)
+                    if build_match:
+                        build_number = build_match.group(1)
+                        return f"{base_version}({build_number})"
+                    
+                    return base_version
 
     return None
