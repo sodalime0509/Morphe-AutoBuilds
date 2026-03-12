@@ -6,8 +6,9 @@ from src import session
 
 base_url = "https://www.apkmirror.com"
 
-def get_build_number_for_version(version: str, config: dict) -> str | None:
-    """Fetch build number for a specific version from APKMirror"""
+def get_build_number_for_version(version: str, config: dict) -> tuple[str | None, str]:
+    """Fetch build number for a specific version from APKMirror.
+    Returns (build_number, format_type) where format_type is 'parentheses' or 'build_suffix'"""
     try:
         main_url = f"{base_url}/apk/{config['org']}/{config['name']}/"
         response = session.get(main_url)
@@ -17,14 +18,19 @@ def get_build_number_for_version(version: str, config: dict) -> str | None:
             for link in soup.find_all('a', href=True):
                 href = link['href']
                 text = link.get_text()
-                # Check if this link is for our version with build number
-                if version in text and '(' in text:
+                # Check if this link is for our version
+                if version in text:
+                    # Format 1: "32.30.0(1575420)" -> parentheses
                     build_match = re.search(rf'{re.escape(version)}\((\d+)\)', text)
                     if build_match:
-                        return build_match.group(1)
+                        return build_match.group(1), 'parentheses'
+                    # Format 2: "6.6 build 006" -> build suffix
+                    build_match = re.search(rf'{re.escape(version)}\s+build\s+(\d+)', text, re.IGNORECASE)
+                    if build_match:
+                        return build_match.group(1), 'build_suffix'
     except Exception as e:
         logging.debug(f"Could not fetch build number: {e}")
-    return None
+    return None, None
 
 def get_download_link(version: str, app_name: str, config: dict, arch: str = None) -> str: 
     target_arch = arch if arch else config.get('arch', 'universal')
@@ -34,15 +40,17 @@ def get_download_link(version: str, app_name: str, config: dict, arch: str = Non
     # --- UNIVERSAL URL FINDER WITH VALIDATION ---
     # Extract build number if present (e.g., "32.30.0(1575420)" -> version="32.30.0", build="1575420")
     build_number = None
+    build_format = None
     build_match = re.search(r'\((\d+)\)$', version)
     if build_match:
         build_number = build_match.group(1)
+        build_format = 'parentheses'
         version = version[:build_match.start()]
     else:
         # Try to fetch build number from APKMirror for this version
-        build_number = get_build_number_for_version(version, config)
+        build_number, build_format = get_build_number_for_version(version, config)
         if build_number:
-            logging.info(f"Found build number {build_number} for version {version}")
+            logging.info(f"Found build number {build_number} for version {version} (format: {build_format})")
     
     version_parts = version.split('.')
     found_soup = None
@@ -57,10 +65,14 @@ def get_download_link(version: str, app_name: str, config: dict, arch: str = Non
         
         # If build number exists, append it to the last version part in URL
         if build_number and i == len(version_parts):
-            # e.g., "32-30-0" + "1575420" -> "32-30-01575420"
-            parts = version_parts[:i]
-            parts[-1] = parts[-1] + build_number
-            current_ver_str = "-".join(parts)
+            if build_format == 'build_suffix':
+                # e.g., "6-6" + "build-006" -> "6-6-build-006"
+                current_ver_str = current_ver_str + "-build-" + build_number
+            else:
+                # e.g., "32-30-0" + "1575420" -> "32-30-01575420"
+                parts = version_parts[:i]
+                parts[-1] = parts[-1] + build_number
+                current_ver_str = "-".join(parts)
         
         # Generate ALL possible URL patterns in priority order
         url_patterns = []
