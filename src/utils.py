@@ -176,8 +176,8 @@ def get_supported_version(package_name: str, cli: str, patches: str) -> Optional
     output = run_process([
         'java', '-jar', cli,
         'list-versions',
-        '-f', package_name,
-        patches
+        '-p', patches, '-b',
+        '-f', package_name
     ], capture=True, silent=True, check=False)
 
     if not output:
@@ -186,7 +186,13 @@ def get_supported_version(package_name: str, cli: str, patches: str) -> Optional
 
     lines = output.splitlines()
     logging.info(f"CLI raw output lines: {lines}")
-    
+
+    # Detect CLI error/usage output (wrong syntax, unrecognized args, etc.)
+    first_line = lines[0].strip().lower()
+    if 'usage:' in first_line or 'unmatched argument' in first_line or 'error' in first_line:
+        logging.warning(f"CLI returned error/usage output, cannot determine version")
+        return None
+
     if len(lines) <= 2:
         logging.warning("Output has no version lines")
         return None
@@ -200,6 +206,9 @@ def get_supported_version(package_name: str, cli: str, patches: str) -> Optional
             parts = line.split()
             if parts:
                 version = parts[0]
+                # Validate it looks like a version (starts with a digit)
+                if not version[0].isdigit():
+                    continue
                 # Check if next parts are "build XXX"
                 if len(parts) >= 3 and parts[1].lower() == 'build':
                     version = f"{parts[0]} build {parts[2]}"
