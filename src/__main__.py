@@ -214,13 +214,24 @@ def run_build(app_name: str, source: str, arch: str = "universal") -> str:
             utils.run_process(morphe_cmd, stream=True)
     else:
         logging.info("🔧 Using ReVanced patching system...")
-        # Standard ReVanced command
-        utils.run_process([
-            "java", "-jar", str(cli),
-            "patch", "--patches", str(patches),
-            "--out", str(output_apk), str(input_apk),
-            *exclude_patches, *include_patches
-        ], stream=True)
+        cli_name = Path(cli).name.lower()
+        is_revanced_v6_or_newer = 'revanced-cli-6' in cli_name or 'revanced-cli-7' in cli_name or 'revanced-cli-8' in cli_name
+        
+        if is_revanced_v6_or_newer:
+            utils.run_process([
+                "java", "-jar", str(cli),
+                "patch", "-p", str(patches), "-b",
+                "--out", str(output_apk), str(input_apk),
+                *exclude_patches, *include_patches
+            ], stream=True)
+        else:
+            # Standard ReVanced command
+            utils.run_process([
+                "java", "-jar", str(cli),
+                "patch", "--patches", str(patches),
+                "--out", str(output_apk), str(input_apk),
+                *exclude_patches, *include_patches
+            ], stream=True)
 
     input_apk.unlink(missing_ok=True)
 
